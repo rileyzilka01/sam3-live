@@ -853,7 +853,7 @@ def visualize_prompt_overlay(
     plt.show()
 
 
-def plot_results(img, results):
+def plot_results(img, results, show_plot=False):
     plt.figure(figsize=(12, 8))
     plt.imshow(img)
     nb_objects = len(results["scores"])
@@ -872,6 +872,8 @@ def plot_results(img, results):
             color=color,
             relative_coords=False,
         )
+    if show_plot:
+        plt.show(block=True)
 
 
 def single_visualization(img, anns, title):
