@@ -64,7 +64,7 @@ def main():
 		image = Image.fromarray(img)
 
 		prompt_msg = json.loads(prompt_bytes.decode("utf-8"))
-		prompts = ["black end effector on robot arm", "cube", "plate", "screwdriver"] # default prompts
+		prompts = ["black end effector on robot arm"] # default prompts
 		prompts = prompt_msg.get("prompts", prompts)
 
 		# Run SAM3 segmentation
@@ -75,9 +75,11 @@ def main():
 		merged_mask = None
 
 		try:
-			masks_to_merge = []
+			send_json = {}
+			mask_bytes = []
 
 			for prompt in prompts:
+				masks_to_merge = []
 				# Run inference for each prompt
 				inference_state_prompt = processor.set_text_prompt(state=inference_state, prompt=prompt)
 
@@ -91,25 +93,31 @@ def main():
 					mask = inference_state_prompt["masks"][i].squeeze(0).cpu().numpy()
 					masks_to_merge.append(mask)
 
-			if len(masks_to_merge) == 0:
-				socket.send_json({"error": "no masks found"})
-			else:
 				# Merge all masks (logical OR)
-				merged_mask = np.zeros_like(masks_to_merge[0], dtype=np.uint8)
-				for m in masks_to_merge:
-					merged_mask = np.logical_or(merged_mask, m)
+				if len(masks_to_merge) == 0:
+					send_json[prompt] = {
+						"height": 0,
+						"width": 0,
+						"dtype": "uint8"
+					}
+					mask_bytes.append(np.array([], dtype=np.uint8).tobytes())
+				else:
+					merged_mask = np.zeros_like(masks_to_merge[0], dtype=np.uint8)
+					for m in masks_to_merge:
+						merged_mask = np.logical_or(merged_mask, m)
 
-				merged_mask = merged_mask.astype(np.uint8)  # convert to 0/1
-				mask_bytes = merged_mask.tobytes()
+					merged_mask = merged_mask.astype(np.uint8)  # convert to 0/1
+					mask_bytes.append(merged_mask.tobytes())
 
-				reply_header = json.dumps({
-					"height": merged_mask.shape[0],
-					"width": merged_mask.shape[1],
-					"dtype": str(merged_mask.dtype)
-				}).encode("utf-8")
+					send_json[prompt] = {
+						"height": merged_mask.shape[0],
+						"width": merged_mask.shape[1],
+						"dtype": str(merged_mask.dtype)
+					}
 
-				socket.send_multipart([reply_header, mask_bytes])
-				print(f"Sent merged mask back: {merged_mask.shape}")
+			reply_header = json.dumps(send_json).encode("utf-8")
+			socket.send_multipart([reply_header] + mask_bytes)
+			print(f"Sent masks back for prompts: {send_json.keys()}, {len(mask_bytes)}")
 
 		except Exception as e:
 			print("Error sending merged mask:", e)
