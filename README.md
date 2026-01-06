@@ -31,6 +31,11 @@ self.socket.send_multipart([
 ])
 ```
 
+## Note about prompt structure
+- prompts is a list of strings or other lists
+- if the prompt is a list itll take the first mask, then search for the second and mask it continuously for each prompt in the list for refinement
+- if it is a string then simply mask it.
+
 ### In `live/` I have added an example ros client. Easily adaptable for strictly python, or any other needs
 
 

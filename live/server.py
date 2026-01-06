@@ -81,39 +81,49 @@ def main():
 			for prompt in prompts:
 				masks_to_merge = []
 				# Run inference for each prompt
-				inference_state_prompt = processor.set_text_prompt(state=inference_state, prompt=prompt)
+				if isinstance(prompt, str):
+					merged_mask = run_prompt(inference_state, prompt)
 
-				# Optional: show masks
-				if show_mask:
-					img0 = Image.fromarray(img)
-					plot_results(img0, inference_state_prompt, show_plot=show_mask)
+				# Case 2: nested prompt list (sequential masking)
+				elif isinstance(prompt, list):
+					merged_mask = None
 
-				# Collect masks for this prompt
-				for i in range(len(inference_state_prompt["masks"])):
-					mask = inference_state_prompt["masks"][i].squeeze(0).cpu().numpy()
-					masks_to_merge.append(mask)
+					for idx, sub_prompt in enumerate(prompt):
+						sub_mask = run_prompt(inference_state, sub_prompt)
 
-				# Merge all masks (logical OR)
-				if len(masks_to_merge) == 0:
-					send_json[prompt] = {
+						if sub_mask is None:
+							merged_mask = None
+							break
+
+						if merged_mask is None:
+							# First prompt initializes mask
+							merged_mask = sub_mask
+						else:
+							# Subsequent prompts are masked by previous result
+							merged_mask = np.logical_and(merged_mask, sub_mask)
+
+				else:
+					raise ValueError(f"Unsupported prompt type: {type(prompt)}")
+
+				# Handle empty result
+				if merged_mask is None:
+					send_json[str(prompt)] = {
 						"height": 0,
 						"width": 0,
 						"dtype": "uint8"
 					}
 					mask_bytes.append(np.array([], dtype=np.uint8).tobytes())
-				else:
-					merged_mask = np.zeros_like(masks_to_merge[0], dtype=np.uint8)
-					for m in masks_to_merge:
-						merged_mask = np.logical_or(merged_mask, m)
+					continue
 
-					merged_mask = merged_mask.astype(np.uint8)  # convert to 0/1
-					mask_bytes.append(merged_mask.tobytes())
+				# Finalize mask
+				merged_mask = merged_mask.astype(np.uint8)
+				mask_bytes.append(merged_mask.tobytes())
 
-					send_json[prompt] = {
-						"height": merged_mask.shape[0],
-						"width": merged_mask.shape[1],
-						"dtype": str(merged_mask.dtype)
-					}
+				send_json[str(prompt)] = {
+					"height": merged_mask.shape[0],
+					"width": merged_mask.shape[1],
+					"dtype": str(merged_mask.dtype)
+				}
 
 			reply_header = json.dumps(send_json).encode("utf-8")
 			socket.send_multipart([reply_header] + mask_bytes)
@@ -122,6 +132,26 @@ def main():
 		except Exception as e:
 			print("Error sending merged mask:", e)
 
+
+def run_prompt(state, text_prompt):
+	state_prompt = processor.set_text_prompt(
+		state=state,
+		prompt=text_prompt
+	)
+
+	prompt_masks = []
+	for i in range(len(state_prompt["masks"])):
+		mask = state_prompt["masks"][i].squeeze(0).cpu().numpy()
+		prompt_masks.append(mask)
+
+	if len(prompt_masks) == 0:
+		return None
+
+	merged = np.zeros_like(prompt_masks[0], dtype=bool)
+	for m in prompt_masks:
+		merged = np.logical_or(merged, m)
+
+	return merged
 
 if __name__ == "__main__":
     main()
