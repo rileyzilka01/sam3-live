@@ -18,7 +18,7 @@ h11==0.16.0
 hf-xet==1.2.0
 httpcore==1.0.9
 httpx==0.28.1
-huggingface_hub==1.1.4
+huggingface_hub==0.11.1
 idna==3.11
 ImageIO==2.37.2
 iniconfig==2.3.0
