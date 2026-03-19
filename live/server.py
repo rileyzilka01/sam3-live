@@ -109,14 +109,14 @@ def main():
 				else:
 					raise ValueError(f"Unsupported prompt type: {type(prompt)}")
 
+				if masks is None or len(masks) == 0:
+					send_json[str(prompt)] = []
+					continue
+
 				if prompt == prompts[0]:
 					for i in range(len(masks)-1):
 						masks[0] = np.logical_or(masks[i], masks[i+1]).astype(np.uint8)
 					masks = [masks[0]]
-
-				if masks is None or len(masks) == 0:
-					send_json[str(prompt)] = []
-					continue
 
 				send_json[str(prompt)] = []
 				for m in masks:
